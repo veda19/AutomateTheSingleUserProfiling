@@ -5,6 +5,8 @@
 # The Parameters needed for this script are APPSERVER, DBSERVER, NEW_APPD (if Appdynamics isn't already installed), controller-conf-key
 #                                                                OLD_APPD (otherwise)
 appServer=$1
+controllerAccessKey=$4
+server=$5 # glassfish3 or payara41
 scp ./AppServerAgent-4.5.14.27768.zip root@$appServer:/opt/
 ssh root@$appServer    "echo;
                        echo "Just reached insdide the VM"
@@ -15,18 +17,18 @@ ssh root@$appServer    "echo;
                        rm -rf /opt/AppDynamics/;
 
                        sleep 2s;
-                       if grep -q "Dorg.osgi.framework.bootdelegation=com.singularity.*" "/opt/mirthresults/glassfish3/glassfish/domains/domain1/config/domain.xml" -a
-                          grep -q "Dappdynamics*" "/opt/mirthresults/glassfish3/glassfish/domains/domain1/config/domain.xml"
+                       if grep -q "Dorg.osgi.framework.bootdelegation=com.singularity.*" "/opt/mirthresults/$server/glassfish/domains/domain1/config/domain.xml" -a
+                          grep -q "Dappdynamics*" "/opt/mirthresults/$server/glassfish/domains/domain1/config/domain.xml"
                        then
                          echo;
                          echo "jvm options needed for App Dynamics is already available in the doman.xml. Hereby skipping adding em again..";
                          echo;
                        else
-                         /opt/mirthresults/glassfish3/glassfish/bin/asadmin create-jvm-options "-Dorg.osgi.framework.bootdelegation=com.singularity.*";
-                         /opt/mirthresults/glassfish3/glassfish/bin/asadmin create-jvm-options \"-javaagent\:/opt/AppDynamics/appserver-agent/javaagent.jar\";
-                         /opt/mirthresults/glassfish3/glassfish/bin/asadmin create-jvm-options "-Dappdynamics.agent.tierName=mrtier1";
-                         /opt/mirthresults/glassfish3/glassfish/bin/asadmin create-jvm-options "-Dappdynamics.agent.nodeName=mrnode1";
-                         /opt/mirthresults/glassfish3/glassfish/bin/asadmin create-jvm-options "-Dappdynamics.agent.uniqueHostId=mr";
+                         /opt/mirthresults/$server/glassfish/bin/asadmin create-jvm-options "-Dorg.osgi.framework.bootdelegation=com.singularity.*";
+                         /opt/mirthresults/$server/glassfish/bin/asadmin create-jvm-options \"-javaagent\:/opt/AppDynamics/appserver-agent/javaagent.jar\";
+                         /opt/mirthresults/$server/glassfish/bin/asadmin create-jvm-options "-Dappdynamics.agent.tierName=mrtier1";
+                         /opt/mirthresults/$server/glassfish/bin/asadmin create-jvm-options "-Dappdynamics.agent.nodeName=mrnode1";
+                         /opt/mirthresults/$server/glassfish/bin/asadmin create-jvm-options "-Dappdynamics.agent.uniqueHostId=mr";
                          echo;
                          echo "The needed jvm options are added to the domain.xml";
                          echo;
@@ -50,29 +52,29 @@ ssh root@$appServer    "echo;
 
 
                        #Updating the Controller Config File
-                       controllerAccessKey=$4;
+
                        "
-                       sh ./update.sh $appServer $controllerAccessKey
-                       sh ./update2.sh $appServer $controllerAccessKey
+                       sh ./updateAppServerControllerInfoFile1.sh $appServer $controllerAccessKey
+                       sh ./updateAppServerControllerInfoFile2.sh $appServer $controllerAccessKey
 
 
 ssh root@$appServer    "
                         echo;
                         echo "Removing osgi-cache and generated";
                         echo;
-                        rm -rf /opt/mirthresults/glassfish3/glassfish/domains/domain1/osgi-cache/;
-                        rm -rf /opt/mirthresults/glassfish3/glassfish/domains/domain1/generated/;
+                        rm -rf /opt/mirthresults/$server/glassfish/domains/domain1/osgi-cache/;
+                        rm -rf /opt/mirthresults/$server/glassfish/domains/domain1/generated/;
 
                         #Updating the OSGI Properties
                         sleep 2s;
-                        if grep -q "singularity" "/opt/mirthresults/glassfish3/glassfish/config/osgi.properties"
+                        if grep -q "singularity" "/opt/mirthresults/$server/glassfish/config/osgi.properties"
                         then
                           echo;
                           echo "com.singularity, com.singularity.* already exists in the file osgi.properties, hence skipping adding the same...";
                           echo;
                         else
-                          sed -i '0,/=\${eclipselink.bootdelegation},/ s/=\${eclipselink.bootdelegation},/=\${eclipselink.bootdelegation}, com.singularity,com.singularity.*,/' /opt/mirthresults/glassfish3/glassfish/config/osgi.properties;
-                          sed -i '0,/=oracle.sql, oracle.sql.*/ s/=oracle.sql, oracle.sql.*/=oracle.sql, oracle.sql.*, com.singularity,com.singularity.*/' /opt/mirthresults/glassfish3/glassfish/config/osgi.properties;
+                          sed -i '0,/=\${eclipselink.bootdelegation},/ s/=\${eclipselink.bootdelegation},/=\${eclipselink.bootdelegation}, com.singularity,com.singularity.*,/' /opt/mirthresults/$server/glassfish/config/osgi.properties;
+                          sed -i '0,/=oracle.sql, oracle.sql.*/ s/=oracle.sql, oracle.sql.*/=oracle.sql, oracle.sql.*, com.singularity,com.singularity.*/' /opt/mirthresults/$server/glassfish/config/osgi.properties;
                           echo;
                           echo "Added config in the file osgi.properties";
                           echo;
@@ -82,6 +84,8 @@ ssh root@$appServer    "
                         echo;
                         echo "Restarting the domain for getting the changes effected.."
                         echo;
+                        /opt/mirthresults/payara41/bin/asadmin stop-domain domain1
+                        /opt/mirthresults/payara41/bin/asadmin start-domain domain1
 
                         "
 sleep 2s;
@@ -108,11 +112,13 @@ ssh root@$dbUrl    "echo "Inside the Database Server VM";
                     fi
                     "
 
-                    sh ./updateDB.sh $appServer $controllerAccessKey;
+                    sh ./updateDBServerControllerInfoFile.sh $appServer $controllerAccessKey;
+                    echo "key is " + $controllerAccessKey
 
 scp AppD-DBagent root@$dbUrl:/etc/init.d/
 
 ssh root@$dbUrl "
+                    dos2unix /etc/init.d/AppD-DBagent
                     chmod +x /etc/init.d/AppD-DBagent;
                     /etc/init.d/AppD-DBagent start
 
